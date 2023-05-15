@@ -19,9 +19,9 @@ module.exports = {
   async init() {
     WIKI.logger.info(`(SEARCH/ELASTICSEARCH) Initializing...`)
     switch (this.config.apiVersion) {
-      case '7.x':
-        const { Client: Client7 } = require('elasticsearch7')
-        this.client = new Client7({
+      case '8.x':
+        const { Client: Client8 } = require('elasticsearch8')
+        this.client = new Client8({
           nodes: this.config.hosts.split(',').map(_.trim),
           sniffOnStart: this.config.sniffOnStart,
           sniffInterval: (this.config.sniffInterval > 0) ? this.config.sniffInterval : false,
@@ -29,9 +29,9 @@ module.exports = {
           name: 'wiki-js'
         })
         break
-      case '6.x':
-        const { Client: Client6 } = require('elasticsearch6')
-        this.client = new Client6({
+      case '7.x':
+        const { Client: Client7 } = require('elasticsearch7')
+        this.client = new Client7({
           nodes: this.config.hosts.split(',').map(_.trim),
           sniffOnStart: this.config.sniffOnStart,
           sniffInterval: (this.config.sniffInterval > 0) ? this.config.sniffInterval : false,
@@ -60,20 +60,18 @@ module.exports = {
           const idxBody = {
             properties: {
               suggest: { type: 'completion' },
-              title: { type: 'text', boost: 10.0 },
-              description: { type: 'text', boost: 3.0 },
-              content: { type: 'text', boost: 1.0 },
+              title: { type: 'text' },
+              description: { type: 'text' },
+              content: { type: 'text' },
               locale: { type: 'keyword' },
               path: { type: 'text' },
-              tags: { type: 'text', boost: 8.0 }
+              tags: { type: 'text' }
             }
           }
           await this.client.indices.create({
             index: this.config.indexName,
             body: {
-              mappings: (this.config.apiVersion === '6.x') ? {
-                _doc: idxBody
-              } : idxBody,
+              mappings: idxBody,
               settings: {
                 analysis: {
                   analyzer: {
@@ -129,7 +127,7 @@ module.exports = {
         }
       })
       return {
-        results: _.get(results, 'body.hits.hits', []).map(r => ({
+        results: _.get(results, 'hits.hits', []).map(r => ({
           id: r._id,
           locale: r._source.locale,
           path: r._source.path,
@@ -137,7 +135,7 @@ module.exports = {
           description: r._source.description
         })),
         suggestions: _.reject(_.get(results, 'suggest.suggestions', []).map(s => _.get(s, 'options[0].text', false)), s => !s),
-        totalHits: _.get(results, 'body.hits.total.value', _.get(results, 'body.hits.total', 0))
+        totalHits: _.get(results, 'hits.total.value', _.get(results, 'body.hits.total', 0))
       }
     } catch (err) {
       WIKI.logger.warn('Search Engine Error: ', _.get(err, 'meta.body.error', err))
@@ -182,7 +180,6 @@ module.exports = {
   async created(page) {
     await this.client.index({
       index: this.config.indexName,
-      type: '_doc',
       id: page.hash,
       body: {
         suggest: this.buildSuggest(page),
@@ -204,7 +201,6 @@ module.exports = {
   async updated(page) {
     await this.client.index({
       index: this.config.indexName,
-      type: '_doc',
       id: page.hash,
       body: {
         suggest: this.buildSuggest(page),
@@ -226,7 +222,6 @@ module.exports = {
   async deleted(page) {
     await this.client.delete({
       index: this.config.indexName,
-      type: '_doc',
       id: page.hash,
       refresh: true
     })
@@ -239,13 +234,11 @@ module.exports = {
   async renamed(page) {
     await this.client.delete({
       index: this.config.indexName,
-      type: '_doc',
       id: page.hash,
       refresh: true
     })
     await this.client.index({
       index: this.config.indexName,
-      type: '_doc',
       id: page.destinationHash,
       body: {
         suggest: this.buildSuggest(page),
@@ -314,7 +307,6 @@ module.exports = {
             result.push({
               index: {
                 _index: this.config.indexName,
-                _type: '_doc',
                 _id: doc.id
               }
             })
